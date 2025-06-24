@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chat-container {
+            width: 90%;
+            max-width: 800px;
+            height: 80vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .chat-header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .chat-header p {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            margin: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+        }
+
+        .user .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .assistant .message-avatar {
+            background: #28a745;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 16px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            margin-bottom: 15px;
+            max-width: 70%;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        .welcome-message {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            margin: 20px 0;
+        }
+
+        .file-upload-container {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            border-top: 1px solid #e0e0e0;
+            background: #f8f9fa;
+        }
+
+        .file-input {
+            display: none;
+        }
+        
+        .file-upload-label {
+            display: inline-block;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+            transition: background 0.3s;
+        }
+
+        .file-upload-label:hover {
+            background: #0056b3;
+        }
+
+        #file-preview-container {
+            display: none; /* Initially hidden */
+            align-items: center;
+            gap: 10px;
+            margin-left: 15px;
+            padding: 5px;
+            background: #e9ecef;
+            border-radius: 10px;
+        }
+
+        #preview-image {
+            max-height: 40px;
+            max-width: 40px;
+            border-radius: 5px;
+        }
+
+        #file-info {
+            font-size: 0.9rem;
+            color: #495057;
+        }
+
+        #cancel-upload {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: #6c757d;
+        }
+
+        .chat-message.user .uploaded-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 10px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .chat-message.user .uploaded-image:hover {
+            transform: scale(1.02);
+        }
+
+        /* Modal for full-size image */
+        .image-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.85);
+            justify-content: center;
+            align-items: center;
+        }
+        .image-modal-content {
+            max-width: 80%;
+            max-height: 80%;
+            display: block;
+            margin: auto;
+        }
+        .image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🌊 H2Olli</h1>
+            <p>Your Water Analysis Assistant</p>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-message">
+                👋 Hello! I'm H2Olli, your specialized water analysis assistant. Upload a photo of your measurement results or ask me about your pool water values!
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+        
+        <div class="file-upload-container">
+            <label for="fileInput" class="file-upload-label">📷</label>
+            <input type="file" id="fileInput" class="file-input" accept="image/*">
+            
+            <div id="file-preview-container">
+                <img id="preview-image" src="" alt="Image preview">
+                <span id="file-info"></span>
+                <button id="cancel-upload">&times;</button>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <form class="chat-input-form" id="chatForm">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="messageInput" 
+                    placeholder="Type your message here..."
+                    autocomplete="off"
+                >
+                <button type="submit" class="send-button" id="sendButton">
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="image-modal">
+        <span class="image-modal-close" id="modalClose">&times;</span>
+        <img class="image-modal-content" id="modalImage">
+    </div>
+
+    <script>
+        const sessionId = '{{ session_id }}';
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatForm = document.getElementById('chatForm');
+        const typingIndicator = document.getElementById('typingIndicator');
+        
+        const fileInput = document.getElementById('fileInput');
+        const filePreviewContainer = document.getElementById('file-preview-container');
+        const previewImage = document.getElementById('preview-image');
+        const fileInfo = document.getElementById('file-info');
+        const cancelUpload = document.getElementById('cancel-upload');
+
+        const imageModal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        const modalClose = document.getElementById('modalClose');
+
+        let selectedFile = null;
+
+        function addMessage(message, sender, imageUrl = null) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', sender);
+
+            const messageContent = document.createElement('div');
+            messageContent.classList.add('message-content');
+            messageContent.innerText = message;
+
+            messageElement.appendChild(messageContent);
+
+            if (imageUrl) {
+                const imageElement = document.createElement('img');
+                imageElement.src = imageUrl;
+                imageElement.classList.add('uploaded-image');
+                imageElement.onclick = () => openImageModal(imageUrl);
+                messageElement.appendChild(imageElement);
+            }
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function openImageModal(src) {
+            modalImage.src = src;
+            imageModal.style.display = 'flex';
+        }
+
+        modalClose.onclick = () => {
+            imageModal.style.display = 'none';
+        }
+        window.onclick = (event) => {
+            if (event.target == imageModal) {
+                imageModal.style.display = 'none';
+            }
+        }
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                selectedFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                    fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                    filePreviewContainer.style.display = 'flex';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function resetFileInput() {
+            selectedFile = null;
+            fileInput.value = ''; // Reset the file input
+            filePreviewContainer.style.display = 'none';
+            previewImage.src = '';
+            fileInfo.textContent = '';
+        }
+
+        cancelUpload.addEventListener('click', resetFileInput);
+
+        async function sendMessage(event) {
+            event.preventDefault();
+            const message = messageInput.value.trim();
+
+            if (!message && !selectedFile) {
+                return;
+            }
+
+            // Immediately display user message
+            let imageUrlForDisplay = null;
+            if (selectedFile) {
+                imageUrlForDisplay = URL.createObjectURL(selectedFile);
+            }
+            addMessage(message, 'user', imageUrlForDisplay);
+            
+            messageInput.value = '';
+            typingIndicator.style.display = 'flex';
+
+            let imageBase64 = null;
+            if (selectedFile) {
+                // Convert file to base64 to send to backend
+                const reader = new FileReader();
+                reader.readAsDataURL(selectedFile);
+                await new Promise(resolve => {
+                    reader.onload = () => {
+                        imageBase64 = reader.result;
+                        resolve();
+                    };
+                });
+            }
+            
+            // Reset the file input *after* processing
+            resetFileInput();
+
+            try {
+                const response = await fetch('/api/send-message/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ 
+                        session_id: sessionId, 
+                        message: message,
+                        image_data: imageBase64 
+                    })
+                });
+
+                const data = await response.json();
+                
+                typingIndicator.style.display = 'none';
+                
+                // Check if response has the correct structure
+                if (data.response) {
+                    addMessage(data.response, 'assistant');
+                } else if (data.error) {
+                    addMessage(`Error: ${data.error}`, 'assistant');
+                } else {
+                    addMessage('Sorry, I received an unexpected response. Please try again.', 'assistant');
+                }
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                typingIndicator.style.display = 'none';
+                addMessage('Sorry, something went wrong. Please try again.', 'assistant');
+            }
+        }
+
+        chatForm.addEventListener('submit', sendMessage);
+        sendButton.addEventListener('click', sendMessage);
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // Initial welcome message
+        // addMessage("Hello! I'm H2Olli. How can I help you with your pool water analysis today?", 'assistant');
+    </script>
+</body>
+</html> 
