@@ -9,110 +9,11 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
-import openai
-from PIL import Image
-import cv2
-import numpy as np
-import pytesseract
+from openai import OpenAI
 from .models import Conversation, Message
 
-# Configure OpenAI
-openai.api_key = settings.OPENAI_API_KEY
-
-def extract_text_from_image(image_data):
-    """Extract text from image using OCR"""
-    try:
-        # On Windows, you may need to explicitly point pytesseract to the Tesseract executable.
-        # Update this path if you installed Tesseract in a different location.
-        tesseract_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        
-        # Check if Tesseract executable exists at the specified path
-        if os.path.exists(tesseract_path):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path
-        else:
-            print(f"Tesseract executable not found at: {tesseract_path}")
-            print("Please ensure Tesseract is installed or update the path in chatbot/views.py.")
-            return "OCR_NOT_AVAILABLE"
-
-        # Remove data URL prefix if present
-        if image_data.startswith('data:image'):
-            image_data = image_data.split(',')[1]
-
-        # Decode base64 image
-        image_bytes = base64.b64decode(image_data)
-        image = Image.open(BytesIO(image_bytes))
-
-        # Convert to OpenCV format
-        opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-        # --- OCR Pre-processing Strategies ---
-        # Strategy 1: Grayscale
-        gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-        
-        # Strategy 2: Binary Thresholding
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-        # --- Attempt OCR with different strategies ---
-        text = ""
-        configs = r'--oem 3 --psm 6'  # Assume a single uniform block of text.
-
-        # Attempt 1: With thresholding
-        print("Attempting OCR with thresholded image...")
-        text = pytesseract.image_to_string(thresh, config=configs)
-        
-        # Attempt 2: With grayscale (if first failed)
-        if len(text.strip()) < 15:  # Heuristic for poor result
-            print("First attempt had poor results. Attempting OCR with grayscale image...")
-            text = pytesseract.image_to_string(gray, config=configs)
-        
-        # Attempt 3: With original image (if still fails)
-        if len(text.strip()) < 15:
-            print("Second attempt had poor results. Attempting OCR with original image...")
-            text = pytesseract.image_to_string(opencv_image, config=configs)
-
-        print(f"--- OCR Result ---\n{text}\n--------------------")
-        
-        if not text.strip():
-            print("OCR failed to extract any meaningful text from the image.")
-            return "ERROR_PROCESSING_IMAGE"
-
-        return text
-
-    except pytesseract.TesseractNotFoundError:
-        print("OCR Error: Tesseract is not installed or not in your PATH.")
-        print("Please install Tesseract and add it to your system's PATH, or specify the path in chatbot/views.py.")
-        return "OCR_NOT_AVAILABLE"
-    except Exception as e:
-        print(f"An unexpected error occurred during image processing: {e}")
-        import traceback
-        traceback.print_exc()
-        return "ERROR_PROCESSING_IMAGE"
-
-def extract_water_values(text):
-    """Extract water measurement values from OCR text"""
-    values = {}
-    
-    # Common patterns for water measurement values
-    patterns = {
-        'ph': r'pH[:\s]*([0-9]+\.?[0-9]*)',
-        'chlorine': r'(?:free\s+)?chlorine[:\s]*([0-9]+\.?[0-9]*)\s*(?:mg/l|ppm)',
-        'total_chlorine': r'total\s+chlorine[:\s]*([0-9]+\.?[0-9]*)\s*(?:mg/l|ppm)',
-        'alkalinity': r'alkalinity[:\s]*([0-9]+\.?[0-9]*)\s*(?:mg/l|ppm)',
-        'cya': r'(?:cyanuric\s+acid|CYA)[:\s]*([0-9]+\.?[0-9]*)\s*(?:mg/l|ppm)',
-        'redox': r'redox[:\s]*([0-9]+\.?[0-9]*)\s*(?:mV|mv)',
-        'temperature': r'temperature[:\s]*([0-9]+\.?[0-9]*)\s*°?C',
-        'customer_number': r'(PB-[A-Z0-9]+)'
-    }
-    
-    for key, pattern in patterns.items():
-        try:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match and match.groups():
-                values[key] = match.group(1)
-        except (IndexError, AttributeError):
-            continue
-    
-    return values
+# Configure OpenAI client
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 def chat_view(request):
     """Main chat interface view"""
@@ -141,44 +42,6 @@ def send_message(request):
         if not user_message and image_data:
             user_message = "📷 I've uploaded an image of my water measurement results. Please analyze it for me."
         
-        # Process image if provided
-        extracted_data = ""
-        if image_data:
-            try:
-                # Extract text from image
-                ocr_text = extract_text_from_image(image_data)
-                
-                if ocr_text == "OCR_NOT_AVAILABLE":
-                    user_message += "\n\n📷 Image uploaded successfully! However, OCR (text recognition) is not available on this system. Please manually enter your water measurement values in the chat, and I'll analyze them for you."
-                elif ocr_text == "ERROR_PROCESSING_IMAGE":
-                    user_message += "\n\n📷 Image uploaded, but there was an error processing it. Please manually enter your water measurement values in the chat, and I'll analyze them for you."
-                elif ocr_text:
-                    # Extract water values from OCR text
-                    water_values = extract_water_values(ocr_text)
-                    
-                    # Format extracted data for ChatGPT
-                    extracted_data = f"\n\nEXTRACTED DATA FROM UPLOADED IMAGE:\n"
-                    extracted_data += f"OCR Text: {ocr_text}\n\n"
-                    
-                    if water_values:
-                        extracted_data += "DETECTED WATER VALUES:\n"
-                        for key, value in water_values.items():
-                            extracted_data += f"- {key.replace('_', ' ').title()}: {value}\n"
-                    else:
-                        extracted_data += "No specific water values detected in the image.\n"
-                    
-                    # Add extracted data to user message
-                    user_message += extracted_data
-                    
-                    # Add a note about image analysis
-                    user_message += "\n\nPlease analyze the water values from this image and provide recommendations based on the H2Olli guidelines."
-                else:
-                    user_message += "\n\n📷 Image uploaded, but no text was detected. Please manually enter your water measurement values in the chat, and I'll analyze them for you."
-                
-            except Exception as e:
-                print(f"Error processing image: {str(e)}")
-                user_message += "\n\n📷 Image uploaded, but there was an error processing it. Please manually enter your water measurement values in the chat, and I'll analyze them for you."
-        
         # Save user message
         Message.objects.create(
             conversation=conversation,
@@ -188,15 +51,20 @@ def send_message(request):
         
         # Try to get response from OpenAI API
         try:
-            # Get conversation history for context
+            # Debug: Check API key
+            print(f"Debug: API Key starts with: {settings.OPENAI_API_KEY[:10]}...")
+            
+            # Get conversation history for context (only text messages for history)
             messages = conversation.messages.all()
             conversation_history = []
             
             for msg in messages:
-                conversation_history.append({
-                    'role': msg.role,
-                    'content': msg.content
-                })
+                # Only include text content in conversation history
+                if msg.role in ['user', 'assistant']:
+                    conversation_history.append({
+                        'role': msg.role,
+                        'content': msg.content
+                    })
             
             # Prepare messages for OpenAI (keep last 10 messages for context)
             recent_messages = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
@@ -241,23 +109,86 @@ It asks targeted follow-up questions if important information is missing or uncl
 H2Olli can also work with an uploaded customer list in the format of the file "file-STEACcR7Xp4hdx6sfAaXF5" to automatically integrate filter type, chlorine type, pH regulation, redox measurement, and PoolCop status into recommendations. The prerequisite for this is that the customer enters their exact customer number in the chat. An automatic search or query in this list does not occur.'''
             }
             
-            messages_for_openai = [system_message] + recent_messages
+            # Build the user message for OpenAI
+            user_content = []
+            if user_message:
+                user_content.append({"type": "text", "text": user_message})
+            if image_data:
+                # If image_data is a base64 string, convert to data URL
+                if not image_data.startswith("data:image"):
+                    image_data = f"data:image/png;base64,{image_data}"
+                user_content.append({"type": "image_url", "image_url": {"url": image_data}})
             
-            # Call OpenAI API using the correct format for version 0.28.1
-            response = openai.ChatCompletion.create(
+            # Compose the OpenAI messages array
+            openai_messages = [system_message] + recent_messages
+            
+            # Add the new user message (with text and/or image)
+            if len(user_content) > 1:
+                # Multiple content items (text + image)
+                openai_messages.append({
+                    "role": "user",
+                    "content": user_content
+                })
+            else:
+                # Single content item (text only or image only)
+                openai_messages.append({
+                    "role": "user",
+                    "content": user_content[0] if user_content else ""
+                })
+            
+            # Debug: Print the messages being sent to OpenAI
+            print(f"Debug: Sending {len(openai_messages)} messages to OpenAI")
+            print(f"Debug: User content has {len(user_content)} items")
+            
+            # For text-only messages, use a simpler format
+            if not image_data:
+                # Text-only conversation
+                openai_messages = [system_message]
+                for msg in recent_messages:
+                    openai_messages.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+                openai_messages.append({
+                    "role": "user",
+                    "content": user_message
+                })
+            else:
+                # Vision conversation - ensure proper format
+                openai_messages = [system_message]
+                for msg in recent_messages:
+                    openai_messages.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+                # Add the new user message with vision content
+                openai_messages.append({
+                    "role": "user",
+                    "content": user_content
+                })
+            
+            # Call OpenAI API with vision support
+            response = client.chat.completions.create(
                 model="gpt-4o",
-                messages=messages_for_openai,
+                messages=openai_messages,
                 max_tokens=500,
                 temperature=0.7
             )
             
             assistant_response = response.choices[0].message.content
-            
+        
         except Exception as api_error:
             print(f"OpenAI API Error: {str(api_error)}")
+            print(f"Error type: {type(api_error)}")
+            import traceback
+            traceback.print_exc()
             # Provide a mock response if API fails
             if "quota" in str(api_error).lower():
                 assistant_response = "I'm sorry, but I'm currently experiencing technical difficulties due to API quota limits. Please try again later or contact support to resolve this issue."
+            elif "authentication" in str(api_error).lower() or "unauthorized" in str(api_error).lower():
+                assistant_response = "I'm sorry, but there's an authentication issue with the AI service. Please check the API configuration."
+            elif "model" in str(api_error).lower():
+                assistant_response = "I'm sorry, but the requested AI model is not available. Please try again later."
             else:
                 assistant_response = "I'm sorry, but I'm having trouble connecting to my AI service right now. Please try again in a moment."
         
