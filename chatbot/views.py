@@ -496,27 +496,66 @@ Please analyze these values and determine if the pool water is safe for swimming
 
     return data_str
 
-
 @csrf_exempt
 @require_http_methods(["POST"])
 def send_message(request):
-    """API endpoint to handle chat messages - no conversation storage"""
+    """API endpoint to handle chat messages - supports multiple images"""
     try:
         data = json.loads(request.body)
         user_message = data.get('message', '').strip()
         session_id = data.get('session_id', str(uuid.uuid4()))  # Generate if not provided
-        image_data = data.get('image_data', None)
+
+
+
+        # Handle both single image (backward compatibility) and multiple images
+        image_data_list = []
+
+        # Single image (existing functionality)
+        single_image = data.get('image_data', None)
+        if single_image:
+            image_data_list.append(single_image)
+
+        # Multiple images (new functionality)
+        multiple_images = data.get('images', [])
+        if multiple_images and isinstance(multiple_images, list):
+            image_data_list.extend(multiple_images)
 
         # Initialize assistant_response to avoid reference errors
         assistant_response = "I'm sorry, I couldn't process your request at this time."
 
-        # Allow either a message OR an image, but not both empty
-        if not user_message and not image_data:
-            return JsonResponse({'error': 'Please provide a message or upload an image'}, status=400)
+        # Allow either a message OR images, but not both empty
+        if not user_message and not image_data_list:
+            return JsonResponse({'error': 'Please provide a message or upload at least one image'}, status=400)
 
-        # Check if the user message contains a customer ID
+        # Limit number of images to prevent API overload
+        max_images = 5  # Adjust based on your needs and API limits
+        if len(image_data_list) > max_images:
+            return JsonResponse({'error': f'Maximum {max_images} images allowed per request'}, status=400)
+
+
+        if user_message and not image_data_list:
+            user_lower = user_message.lower().strip()
+            greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'help', 'what can you do']
+
+            if any(greeting in user_lower for greeting in greetings):
+                assistant_response = """Hello! I'm H2Olli, your pool water analysis assistant. I can help you analyze your pool water to determine if it's safe for swimming. You can:
+
+        • Share your water test values (pH, chlorine, alkalinity, etc.)
+        • Upload images of test strips or digital readings  
+        • Simply provide your customer ID (like 'pb-10001') to get your live pool monitoring data and instant analysis
+
+        How can I help you today?"""
+
+                return JsonResponse({
+                    'response': assistant_response,
+                    'session_id': session_id,
+                    'images_processed': 0
+                })
+
+
+        # Check if the user message contains a customer ID (only for text-only requests)
         customer_id = None
-        if user_message and not image_data:
+        if user_message and not image_data_list:
             customer_id = is_customer_id(user_message)
 
         # If customer ID is detected, fetch pool data
@@ -537,7 +576,7 @@ def send_message(request):
                 # System message for customer data analysis
                 system_message = {
                     'role': 'system',
-                    'content': '''You are H2Olli, a specialized professional assistant for comprehensive pool water analysis. You help pool owners understand and evaluate water conditions to determine if their pool is safe for swimming.
+                    'content': '''You are H2Olli, a specialized professional assistant for comprehensive pool water analysis. You help pool owners understand and evaluate water conditions to determine if their pool is safe for swimming.you can also answer by entering by specific customer id.
 
 **Current Request**: Analyze real-time pool monitoring data retrieved from a customer's pool monitoring system.
 
@@ -583,19 +622,21 @@ Please consult with a pool professional for proper interpretation of these value
 
         else:
             # Handle regular messages and images (no conversation history)
-            if not user_message and image_data:
-                user_message = "📷 I've uploaded an image of my water measurement results. Please analyze it for me."
+            if not user_message and image_data_list:
+                image_count = len(image_data_list)
+                user_message = f"📷 I've uploaded {image_count} image{'s' if image_count > 1 else ''} of my water measurement results. Please analyze {'them' if image_count > 1 else 'it'} for me."
 
             try:
-                # System message for regular analysis
+                # System message for regular analysis (updated for multiple images)
                 system_message = {
                     'role': 'system',
-                    'content': '''You are H2Olli, a specialized professional assistant for comprehensive pool water analysis. You help pool owners understand and evaluate water conditions to determine if their pool is safe for swimming.
+                    'content': '''You are H2Olli, a specialized professional assistant for comprehensive pool water analysis. You help pool owners understand and evaluate water conditions to determine if their pool is safe for swimming.you can also answer by taking the specific customer id.
 
 **Your Analysis Capabilities:**
 1. **Manual Data Entry**: Analyze water values that users type directly
 2. **Digital Image Reading**: Extract text and numerical values from uploaded images of digital meters, photometers, or measurement displays
 3. **Color Strip Analysis**: Analyze uploaded images of pool test strips by comparing colors to standard color charts and provide approximate readings
+4. **Multiple Image Analysis**: When multiple images are provided, analyze each one and consolidate findings into a comprehensive assessment
 
 **Water Parameters You Analyze:**
 - pH levels, Free Chlorine, Total Chlorine, Alkalinity (Total Alkalinity/TA)
@@ -607,25 +648,38 @@ Please consult with a pool professional for proper interpretation of these value
 - Total Alkalinity: 80-120 mg/L (ppm)
 - Cyanuric Acid: 30-50 mg/L (ppm)
 
-**Response Format:**
+**Response Format for Multiple Images:**
+1. **Image Analysis Summary**: "I've analyzed your [X] images. Here's what I found..."
+2. **Individual Results**: Brief findings from each image if significantly different
+3. **Consolidated Data**: Combined/averaged readings from all images
+4. **Parameter Analysis**: Evaluate consolidated parameters against optimal ranges
+5. **Swimming Safety**: Clear verdict - "SAFE FOR SWIMMING" or "NOT RECOMMENDED FOR SWIMMING" with reasons
+6. **Specific Recommendations**: Detailed steps for any needed corrections
+
+**Response Format for Single Image:**
 1. **Data Summary**: "Based on your [manual entry/digital readings/color strip analysis], here are the detected values..."
 2. **Parameter Analysis**: Evaluate each parameter against optimal ranges
-3. **Swimming Safety**: Clear verdict - "SAFE FOR SWIMMING" or "NOT RECOMMENDED FOR SWIMMING" with reasons
+3. **Swimming Safety**: Clear verdict with reasons
 4. **Specific Recommendations**: Detailed steps for any needed corrections
 
 Always prioritize swimmer safety and provide professional, actionable advice.'''
                 }
 
                 # Build the user message for OpenAI
-                if image_data:
-                    # Image analysis
-                    if not image_data.startswith("data:image"):
-                        image_data = f"data:image/png;base64,{image_data}"
+                if image_data_list:
+                    # Image analysis (single or multiple)
+                    user_content = [{"type": "text", "text": user_message}]
 
-                    user_content = [
-                        {"type": "text", "text": user_message},
-                        {"type": "image_url", "image_url": {"url": image_data}}
-                    ]
+                    # Add each image to the content
+                    for i, image_data in enumerate(image_data_list):
+                        # Ensure proper data URL format
+                        if not image_data.startswith("data:image"):
+                            image_data = f"data:image/png;base64,{image_data}"
+
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": image_data}
+                        })
 
                     openai_messages = [
                         system_message,
@@ -638,11 +692,18 @@ Always prioritize swimmer safety and provide professional, actionable advice.'''
                         {"role": "user", "content": user_message}
                     ]
 
+                # Adjust max_tokens based on number of images
+                max_tokens = 500
+                if len(image_data_list) > 1:
+                    max_tokens = 800  # More tokens for multiple image analysis
+                elif len(image_data_list) == 1:
+                    max_tokens = 600  # Slightly more for single image
+
                 # Call OpenAI API
                 response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=openai_messages,
-                    max_tokens=500,
+                    max_tokens=max_tokens,
                     temperature=0.7
                 )
 
@@ -664,7 +725,8 @@ Always prioritize swimmer safety and provide professional, actionable advice.'''
         # Return response without saving to database
         return JsonResponse({
             'response': assistant_response,
-            'session_id': session_id
+            'session_id': session_id,
+            'images_processed': len(image_data_list)  # Added for debugging/tracking
         })
 
     except json.JSONDecodeError:
@@ -674,3 +736,4 @@ Always prioritize swimmer safety and provide professional, actionable advice.'''
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+
