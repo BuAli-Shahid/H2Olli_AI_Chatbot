@@ -26,4 +26,15 @@ class Message(models.Model):
         ordering = ['timestamp']
     
     def __str__(self):
-        return f"{self.role}: {self.content[:50]}..." 
+        return f"{self.role}: {self.content[:50]}..."
+
+
+class PoolCustomer(models.Model):
+    """Model to store pool customer information"""
+    customer_id = models.CharField(max_length=50, unique=True)
+    print(f'customer_id: {customer_id}')
+    api_key = models.CharField(max_length=255)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.customer_id

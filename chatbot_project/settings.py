@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'chatbot',
+    'django.contrib.admin'
 ]
 
 MIDDLEWARE = [
@@ -101,4 +102,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True  # Only for development!
 
 # OpenAI API Key
-OPENAI_API_KEY = "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" 
+OPENAI_API_KEY = "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" 
