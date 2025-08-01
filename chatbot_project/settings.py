@@ -12,9 +12,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['dev.am-tonwerk.de', 'www.am-tonwerk.de']
 
 # Application definition
 INSTALLED_APPS = [
@@ -102,4 +102,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True  # Only for development!
 
 # OpenAI API Key
-OPENAI_API_KEY = "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" 
+OPENAI_API_KEY = "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"
+
+
+
